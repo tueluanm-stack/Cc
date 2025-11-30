@@ -1,23 +1,24 @@
 --[[ 
-    ROBLOX SMART EXECUTOR V2 - AUTO DODGE & AIMBOT
-    Features: 
-    - Tabbed GUI Interface (Dodge & Aim)
-    - Auto-Dodge with Emergency Toggle
-    - Camera Aim/Aimbot with Priority Selector (Visible Head / Nearest)
-    - Instant CFrame movement for all features
+    ROBLOX SMART EXECUTOR V3 - AUTO DODGE, AIMBOT & MOVEMENT
+    Updated Features:
+    - Minimizable GUI (Draggable Icon)
+    - Aim Priority: Nearest / Visible / Hybrid (Visible + Nearest)
+    - Movement Tab: Fly & Teleport Overhead
 ]]
 
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
 local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
 
 -- // CONFIGURATION // --
 getgenv().Config = {
     -- DODGE Settings
     DodgeEnabled = false,
-    EmergencyDodge = true,  -- Mới: Bật/tắt né khẩn cấp (né dọc)
+    EmergencyDodge = true,
     ScanRadius = 50,
     SafeDistance = 15,
     DodgeMagnitude = 5,
@@ -25,74 +26,121 @@ getgenv().Config = {
     
     -- AIM Settings
     AimEnabled = false,
-    AimPriority = "NEAREST", -- Options: "VISIBLE_HEAD", "NEAREST"
-    AimFOV = 90,             -- Phạm vi ngắm (Field of View)
+    AimPriority = "NEAREST", -- Options: "NEAREST", "VISIBLE_HEAD", "HYBRID"
+    AimFOV = 90,
+    
+    -- MOVEMENT Settings
+    FlyEnabled = false,
+    FlySpeed = 50,
+    TPHeight = 10, -- Khoảng cách trên đầu đối thủ
 }
 
 -- // GUI CREATION // --
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SmartExecutorV2"
+ScreenGui.Name = "SmartExecutorV3"
 ScreenGui.Parent = Player:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
+-- 1. ICON FRAME (Nút mở lại khi thu nhỏ)
+local IconFrame = Instance.new("TextButton")
+IconFrame.Name = "OpenIcon"
+IconFrame.Size = UDim2.new(0, 50, 0, 50)
+IconFrame.Position = UDim2.new(0.01, 0, 0.5, 0)
+IconFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+IconFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
+IconFrame.Text = "SE"
+IconFrame.Font = Enum.Font.GothamBlack
+IconFrame.TextSize = 20
+IconFrame.Visible = false -- Mặc định ẩn
+IconFrame.Active = true
+IconFrame.Draggable = true -- Có thể kéo thả
+Instance.new("UICorner", IconFrame).CornerRadius = UDim.new(0, 10)
+Instance.new("UIStroke", IconFrame).Color = Color3.fromRGB(0, 170, 255)
+Instance.new("UIStroke", IconFrame).Thickness = 2
+IconFrame.Parent = ScreenGui
+
+-- 2. MAIN FRAME
 local MainFrame = Instance.new("Frame")
 MainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-MainFrame.Position = UDim2.new(0.01, 0, 0.6, 0)
-MainFrame.Size = UDim2.new(0, 200, 0, 250)
+MainFrame.Position = UDim2.new(0.05, 0, 0.5, 0)
+MainFrame.Size = UDim2.new(0, 220, 0, 280) -- Tăng chiều cao một chút
 MainFrame.Active = true
 MainFrame.Draggable = true
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 MainFrame.Parent = ScreenGui
 
+-- Minimize Button (-)
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 25, 0, 25)
+MinBtn.Position = UDim2.new(1, -30, 0, 2)
+MinBtn.Text = "-"
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextSize = 24
+MinBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+MinBtn.BackgroundTransparency = 1
+MinBtn.Parent = MainFrame
+
 -- Tab System
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, 0, 0, 30)
+TabBar.Position = UDim2.new(0, 0, 0, 10) -- Dời xuống 1 chút để tránh nút minimize
 TabBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+TabBar.BackgroundTransparency = 1
 TabBar.Parent = MainFrame
 
 local TabContent = Instance.new("Frame")
-TabContent.Size = UDim2.new(1, 0, 1, -30)
-TabContent.Position = UDim2.new(0, 0, 0, 30)
+TabContent.Size = UDim2.new(1, 0, 1, -40)
+TabContent.Position = UDim2.new(0, 0, 0, 40)
 TabContent.BackgroundTransparency = 1
 TabContent.Parent = MainFrame
 
+-- Creating Tabs Containers
 local TabDodge = Instance.new("Frame")
 TabDodge.Name = "DodgeTab"
 TabDodge.Size = UDim2.new(1, 0, 1, 0)
 TabDodge.BackgroundTransparency = 1
+TabDodge.Visible = true
 TabDodge.Parent = TabContent
 
 local TabAim = Instance.new("Frame")
 TabAim.Name = "AimTab"
 TabAim.Size = UDim2.new(1, 0, 1, 0)
 TabAim.BackgroundTransparency = 1
+TabAim.Visible = false
 TabAim.Parent = TabContent
 
-local DodgeBtn = Instance.new("TextButton")
-DodgeBtn.Size = UDim2.new(0.5, 0, 1, 0)
-DodgeBtn.Text = "DODGE"
-DodgeBtn.Font = Enum.Font.GothamBold
-DodgeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-DodgeBtn.TextSize = 16
-DodgeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-DodgeBtn.Parent = TabBar
+local TabMove = Instance.new("Frame")
+TabMove.Name = "MoveTab"
+TabMove.Size = UDim2.new(1, 0, 1, 0)
+TabMove.BackgroundTransparency = 1
+TabMove.Visible = false
+TabMove.Parent = TabContent
 
-local AimBtn = Instance.new("TextButton")
-AimBtn.Size = UDim2.new(0.5, 0, 1, 0)
-AimBtn.Position = UDim2.new(0.5, 0, 0, 0)
-AimBtn.Text = "AIM"
-AimBtn.Font = Enum.Font.GothamBold
-AimBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
-AimBtn.TextSize = 16
-AimBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-AimBtn.Parent = TabBar
+-- Tab Buttons
+local function CreateTabBtn(text, xPos, parent)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.33, 0, 1, 0)
+    btn.Position = UDim2.new(xPos, 0, 0, 0)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.TextColor3 = Color3.fromRGB(150, 150, 150)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+    return btn
+end
+
+local DodgeBtn = CreateTabBtn("DODGE", 0, TabBar)
+local AimBtn = CreateTabBtn("AIM", 0.33, TabBar)
+local MoveBtn = CreateTabBtn("MOVE", 0.66, TabBar)
 
 local CurrentTab = TabDodge
+DodgeBtn.TextColor3 = Color3.new(1,1,1) -- Active color
 
--- Helper functions for styling
-
+-- Helper Styling Functions
 local function StyleButton(btn, text, color, position, parent, size)
-    btn.Size = size or UDim2.new(0.9, 0, 0.2, 0)
+    btn.Size = size or UDim2.new(0.9, 0, 0.18, 0)
     btn.Position = position
     btn.Font = Enum.Font.GothamBold
     btn.Text = text
@@ -108,7 +156,7 @@ local function StyleBox(box, text, position, parent)
     box.Parent = parent
     box.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     box.Position = position
-    box.Size = UDim2.new(0.9, 0, 0.1, 0)
+    box.Size = UDim2.new(0.9, 0, 0.12, 0)
     box.Font = Enum.Font.SourceSansBold
     box.PlaceholderText = text
     box.Text = text:match("%((.+)%)") 
@@ -117,24 +165,6 @@ local function StyleBox(box, text, position, parent)
     box.TextXAlignment = Enum.TextXAlignment.Center
     Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
     return box
-end
-
-local function SwitchTab(newTab)
-    CurrentTab.Visible = false
-    newTab.Visible = true
-    
-    if newTab == TabDodge then
-        DodgeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        DodgeBtn.TextColor3 = Color3.new(1, 1, 1)
-        AimBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        AimBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
-    elseif newTab == TabAim then
-        AimBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-        AimBtn.TextColor3 = Color3.new(1, 1, 1)
-        DodgeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        DodgeBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
-    end
-    CurrentTab = newTab
 end
 
 -- // TAB DODGE UI // 
@@ -147,101 +177,77 @@ local DodgeDistanceBox = StyleBox(Instance.new("TextBox"), "Safe Distance (15)",
 local AimToggle = StyleButton(Instance.new("TextButton"), "AIM: OFF", Color3.fromRGB(150, 150, 150), UDim2.new(0.05, 0, 0.05, 0), TabAim)
 local PriorityToggle = StyleButton(Instance.new("TextButton"), "Ưu tiên: Gần Nhất", Color3.fromRGB(100, 100, 200), UDim2.new(0.05, 0, 0.25, 0), TabAim)
 local AimFOVBox = StyleBox(Instance.new("TextBox"), "Aim FOV (90)", UDim2.new(0.05, 0, 0.48, 0), TabAim)
-
 local AimStatus = Instance.new("TextLabel")
 AimStatus.Size = UDim2.new(1, 0, 0.1, 0)
 AimStatus.Position = UDim2.new(0, 0, 0.7, 0)
 AimStatus.BackgroundTransparency = 1
 AimStatus.Font = Enum.Font.SourceSans
-AimStatus.Text = "EXP: Đã sẵn sàng" -- Đáp ứng yêu cầu EXP
+AimStatus.Text = "EXP: Đã sẵn sàng"
 AimStatus.TextColor3 = Color3.fromRGB(255, 200, 0)
 AimStatus.TextSize = 14
 AimStatus.Parent = TabAim
 
+-- // TAB MOVE UI (NEW) //
+local FlyToggle = StyleButton(Instance.new("TextButton"), "FLY: OFF", Color3.fromRGB(150, 150, 150), UDim2.new(0.05, 0, 0.05, 0), TabMove)
+local TpOverheadBtn = StyleButton(Instance.new("TextButton"), "TP Lên Đầu (Gần Nhất)", Color3.fromRGB(0, 150, 200), UDim2.new(0.05, 0, 0.25, 0), TabMove)
+local FlySpeedBox = StyleBox(Instance.new("TextBox"), "Fly Speed (50)", UDim2.new(0.05, 0, 0.48, 0), TabMove)
+local TpHeightBox = StyleBox(Instance.new("TextBox"), "TP Height (10)", UDim2.new(0.05, 0, 0.65, 0), TabMove)
+local MoveInstruction = Instance.new("TextLabel")
+MoveInstruction.Size = UDim2.new(1, 0, 0.15, 0)
+MoveInstruction.Position = UDim2.new(0, 0, 0.82, 0)
+MoveInstruction.BackgroundTransparency = 1
+MoveInstruction.Font = Enum.Font.SourceSansItalic
+MoveInstruction.Text = "Fly: WASD | Space (Lên) | Ctrl (Xuống)"
+MoveInstruction.TextColor3 = Color3.fromRGB(200, 200, 200)
+MoveInstruction.TextSize = 12
+MoveInstruction.Parent = TabMove
 
--- // LOGIC IMPLEMENTATION // --
+
+-- // SYSTEM LOGIC // --
 
 local function Notify(text)
-    StarterGui:SetCore("SendNotification", {Title = "Smart Executor", Text = text, Duration = 1.5})
+    StarterGui:SetCore("SendNotification", {Title = "Smart Executor V3", Text = text, Duration = 2})
 end
 
--- === DODGE LOGIC ===
+-- === MENU MINIMIZE LOGIC ===
+MinBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    IconFrame.Visible = true
+end)
 
-local function SmartDodge()
-    if not getgenv().Config.DodgeEnabled then return end
+IconFrame.MouseButton1Click:Connect(function()
+    IconFrame.Visible = false
+    MainFrame.Visible = true
+end)
 
-    local MyCharacter = Player.Character
-    local MyRoot = MyCharacter and MyCharacter:FindFirstChild("HumanoidRootPart")
-    if not MyRoot then return end
-
-    local ScanRadius = tonumber(DodgeRangeBox.Text) or getgenv().Config.ScanRadius
-    local SafeDistance = tonumber(DodgeDistanceBox.Text) or getgenv().Config.SafeDistance
+local function SwitchTab(newTab, newBtn)
+    CurrentTab.Visible = false
+    newTab.Visible = true
     
-    local AvoidanceVector = Vector3.new(0, 0, 0)
-    local ThreatCount = 0
-
-    for _, TargetPlayer in pairs(Players:GetPlayers()) do
-        if TargetPlayer ~= Player and TargetPlayer.Character then
-            local TRoot = TargetPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if TRoot then
-                local Distance = (MyRoot.Position - TRoot.Position).Magnitude
-
-                if Distance < ScanRadius and Distance > 0 and Distance < SafeDistance then
-                    local DirectionAway = (MyRoot.Position - TRoot.Position).Unit
-                    local DodgeForce = getgenv().Config.DodgeMagnitude * (1 - (Distance / SafeDistance))
-                    
-                    AvoidanceVector = AvoidanceVector + DirectionAway * DodgeForce
-                    ThreatCount = ThreatCount + 1
-                end
-            end
-        end
-    end
-
-    if ThreatCount > 0 and AvoidanceVector.Magnitude > 0.1 then
-        local TargetPos = MyRoot.CFrame.p + Vector3.new(AvoidanceVector.X, 0, AvoidanceVector.Z).Unit * getgenv().Config.DodgeMagnitude
-        local IsEmergencyDodge = false
-        
-        if getgenv().Config.EmergencyDodge then
-            -- 1. Kiểm tra Tường (Anti-Wall)
-            local RayOrigin = MyRoot.CFrame.p + Vector3.new(0, 2, 0) 
-            local RayDirection = TargetPos - MyRoot.CFrame.p
-            local Params = RaycastParams.new()
-            Params.FilterType = Enum.RaycastFilterType.Exclude
-            Params.FilterDescendantsInstances = {MyCharacter}
-            
-            local Result = Workspace:Raycast(RayOrigin, RayDirection.Unit * (RayDirection.Magnitude + 1), Params)
-
-            local WallDetected = Result and Result.Instance and Result.Distance < RayDirection.Magnitude * 1.2
-            
-            -- 2. Kiểm tra Vực/Void (Anti-Map-Out)
-            local VoidDetected = TargetPos.Y < -50 
-
-            if WallDetected or VoidDetected then
-                IsEmergencyDodge = true
-            end
-        end
-        
-        if IsEmergencyDodge then
-            -- Né Khẩn Cấp (Trục Y)
-            TargetPos = MyRoot.CFrame.p + Vector3.new(0, getgenv().Config.VerticalDodge, 0)
-            Notify("Né Khẩn cấp (Vertical)")
-        end
-        
-        -- Áp dụng di chuyển tức thì
-        MyRoot.CFrame = CFrame.new(TargetPos)
-        MyRoot.Velocity = Vector3.new(0, 0, 0)
-    end
+    -- Reset colors
+    DodgeBtn.TextColor3 = Color3.fromRGB(150,150,150)
+    AimBtn.TextColor3 = Color3.fromRGB(150,150,150)
+    MoveBtn.TextColor3 = Color3.fromRGB(150,150,150)
+    
+    -- Highlight new
+    newBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    
+    CurrentTab = newTab
 end
 
--- === AIMBOT LOGIC ===
+DodgeBtn.MouseButton1Click:Connect(function() SwitchTab(TabDodge, DodgeBtn) end)
+AimBtn.MouseButton1Click:Connect(function() SwitchTab(TabAim, AimBtn) end)
+MoveBtn.MouseButton1Click:Connect(function() SwitchTab(TabMove, MoveBtn) end)
+
+
+-- === LOGIC HELPERS ===
 
 local function CheckIfVisible(target)
     local char = target.Character
     local head = char and char:FindFirstChild("Head")
     if not head then return false end
     
-    local cam = Workspace.CurrentCamera
-    local RayOrigin = cam.CFrame.p
+    local RayOrigin = Camera.CFrame.p
     local RayDirection = head.CFrame.p - RayOrigin
     
     local Params = RaycastParams.new()
@@ -249,17 +255,15 @@ local function CheckIfVisible(target)
     Params.FilterDescendantsInstances = {Player.Character, char}
     
     local Result = Workspace:Raycast(RayOrigin, RayDirection.Unit * RayDirection.Magnitude, Params)
-    
-    -- Nếu Raycast không chạm gì, hoặc chạm chính đầu của mục tiêu, thì mục tiêu đã lộ diện
     return not Result
 end
 
-local function FindTarget()
+local function GetBestTarget()
     local MyRoot = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
     if not MyRoot then return nil end
 
     local BestTarget = nil
-    local BestValue = math.huge -- Dùng cho khoảng cách hoặc FOV
+    local BestScore = math.huge -- Dùng cho khoảng cách
 
     for _, TargetPlayer in pairs(Players:GetPlayers()) do
         if TargetPlayer ~= Player and TargetPlayer.Character then
@@ -268,22 +272,30 @@ local function FindTarget()
             if TRoot and THead then
                 local Distance = (MyRoot.Position - TRoot.Position).Magnitude
                 
+                -- LOGIC CHỌN MỤC TIÊU
                 if getgenv().Config.AimPriority == "NEAREST" then
-                    -- Ưu tiên Gần Nhất
-                    if Distance < BestValue then
-                        BestValue = Distance
+                    if Distance < BestScore then
+                        BestScore = Distance
                         BestTarget = THead
                     end
+
                 elseif getgenv().Config.AimPriority == "VISIBLE_HEAD" then
-                    -- Ưu tiên Mục tiêu Lộ Diện (Đầu)
                     if CheckIfVisible(TargetPlayer) then
-                        local cam = Workspace.CurrentCamera
-                        local DirectionToHead = (THead.Position - cam.CFrame.p).Unit
-                        local CameraFOV = math.deg(math.acos(cam.CFrame.lookVector:Dot(DirectionToHead)))
-                        
-                        -- Chỉ nhắm nếu nằm trong FOV đã đặt
-                        if CameraFOV < getgenv().Config.AimFOV and CameraFOV < BestValue then
-                            BestValue = CameraFOV
+                         -- Kiểm tra FOV
+                        local DirectionToHead = (THead.Position - Camera.CFrame.p).Unit
+                        local CameraFOV = math.deg(math.acos(Camera.CFrame.lookVector:Dot(DirectionToHead)))
+                        if CameraFOV < getgenv().Config.AimFOV and Distance < BestScore then
+                             -- Lưu ý: Ở đây ta vẫn ưu tiên gần nhất trong số những kẻ nhìn thấy
+                            BestScore = Distance 
+                            BestTarget = THead
+                        end
+                    end
+
+                elseif getgenv().Config.AimPriority == "HYBRID" then
+                    -- HYBRID: Chỉ chọn kẻ nhìn thấy (Visible) VÀ Gần nhất (Nearest)
+                    if CheckIfVisible(TargetPlayer) then
+                        if Distance < BestScore then
+                            BestScore = Distance
                             BestTarget = THead
                         end
                     end
@@ -291,85 +303,187 @@ local function FindTarget()
             end
         end
     end
-
     return BestTarget
 end
 
-local function AimAtTarget()
-    if not getgenv().Config.AimEnabled then 
-        AimStatus.Text = "EXP: Đã sẵn sàng"
-        return 
-    end
+-- === MOVEMENT LOGIC (FLY & TP) ===
 
-    local TargetHead = FindTarget()
+-- FLY CONTROL VARIABLES
+local ControlState = {w = false, a = false, s = false, d = false, up = false, down = false}
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.W then ControlState.w = true end
+    if input.KeyCode == Enum.KeyCode.S then ControlState.s = true end
+    if input.KeyCode == Enum.KeyCode.A then ControlState.a = true end
+    if input.KeyCode == Enum.KeyCode.D then ControlState.d = true end
+    if input.KeyCode == Enum.KeyCode.Space then ControlState.up = true end
+    if input.KeyCode == Enum.KeyCode.LeftControl then ControlState.down = true end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.W then ControlState.w = false end
+    if input.KeyCode == Enum.KeyCode.S then ControlState.s = false end
+    if input.KeyCode == Enum.KeyCode.A then ControlState.a = false end
+    if input.KeyCode == Enum.KeyCode.D then ControlState.d = false end
+    if input.KeyCode == Enum.KeyCode.Space then ControlState.up = false end
+    if input.KeyCode == Enum.KeyCode.LeftControl then ControlState.down = false end
+end)
+
+local function FlyLogic()
+    if not getgenv().Config.FlyEnabled then return end
     
-    if TargetHead then
-        local cam = Workspace.CurrentCamera
-        local HeadPosition = TargetHead.Position
+    local MyChar = Player.Character
+    local MyRoot = MyChar and MyChar:FindFirstChild("HumanoidRootPart")
+    local MyHum = MyChar and MyChar:FindFirstChild("Humanoid")
+    
+    if MyRoot and MyHum then
+        -- Chống rơi tự do
+        MyHum.PlatformStand = true 
+        local Speed = getgenv().Config.FlySpeed
         
-        -- Cập nhật CFrame của Camera để "nhìn vào đầu" (Aim Camera)
-        cam.CFrame = CFrame.new(cam.CFrame.p, HeadPosition)
-        AimStatus.Text = "EXP: Đang nhắm vào " .. TargetHead.Parent.Name
+        local Velocity = Vector3.new(0,0,0)
+        
+        if ControlState.w then Velocity = Velocity + Camera.CFrame.LookVector end
+        if ControlState.s then Velocity = Velocity - Camera.CFrame.LookVector end
+        if ControlState.a then Velocity = Velocity - Camera.CFrame.RightVector end
+        if ControlState.d then Velocity = Velocity + Camera.CFrame.RightVector end
+        if ControlState.up then Velocity = Velocity + Vector3.new(0,1,0) end
+        if ControlState.down then Velocity = Velocity - Vector3.new(0,1,0) end
+        
+        -- Cập nhật vị trí bằng CFrame để bay xuyên tường/lơ lửng
+        MyRoot.CFrame = MyRoot.CFrame + (Velocity * (Speed / 50))
+        MyRoot.Velocity = Vector3.new(0,0,0) -- Triệt tiêu trọng lực
     else
-        AimStatus.Text = "EXP: Không tìm thấy mục tiêu"
+        -- Nếu tắt Fly, trả lại trạng thái bình thường
+        if MyChar and MyChar:FindFirstChild("Humanoid") then
+            MyChar.Humanoid.PlatformStand = false
+        end
     end
 end
 
--- // CONNECTION & LIFECYCLE // --
+-- === MAIN LOOP ===
+
 RunService.Heartbeat:Connect(function()
-    SmartDodge()
-    AimAtTarget()
+    -- 1. DODGE
+    if getgenv().Config.DodgeEnabled and not getgenv().Config.FlyEnabled then 
+        -- Chỉ né khi không bay để tránh xung đột CFrame
+        local MyRoot = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+        if MyRoot then
+            local ScanRadius = getgenv().Config.ScanRadius
+            local SafeDist = getgenv().Config.SafeDistance
+            local AvoidVec = Vector3.zero
+            local Danger = false
+            
+            for _, T in pairs(Players:GetPlayers()) do
+                if T ~= Player and T.Character and T.Character:FindFirstChild("HumanoidRootPart") then
+                    local TRoot = T.Character.HumanoidRootPart
+                    local Dist = (MyRoot.Position - TRoot.Position).Magnitude
+                    if Dist < ScanRadius and Dist < SafeDist then
+                        AvoidVec = AvoidVec + (MyRoot.Position - TRoot.Position).Unit
+                        Danger = true
+                    end
+                end
+            end
+            
+            if Danger then
+                local TargetPos = MyRoot.Position + (AvoidVec.Unit * getgenv().Config.DodgeMagnitude)
+                -- Simple Emergency Check
+                if getgenv().Config.EmergencyDodge then
+                     -- Nếu sắp va tường hoặc rơi, nhảy lên cao
+                     local RayCheck = Workspace:Raycast(MyRoot.Position, (TargetPos - MyRoot.Position).Unit * 5)
+                     if RayCheck then TargetPos = MyRoot.Position + Vector3.new(0, getgenv().Config.VerticalDodge, 0) end
+                end
+                MyRoot.CFrame = CFrame.new(TargetPos)
+            end
+        end
+    end
+
+    -- 2. AIMBOT
+    if getgenv().Config.AimEnabled then
+        local Target = GetBestTarget()
+        if Target then
+            Camera.CFrame = CFrame.new(Camera.CFrame.p, Target.Position)
+            AimStatus.Text = "AIM: " .. Target.Parent.Name
+        else
+            AimStatus.Text = "AIM: Searching..."
+        end
+    else
+        AimStatus.Text = "AIM: Off"
+    end
+    
+    -- 3. FLY
+    FlyLogic()
 end)
 
--- // TAB BUTTON HANDLERS //
+-- // BUTTON EVENTS CONFIGURATION //
 
-DodgeBtn.MouseButton1Click:Connect(function() SwitchTab(TabDodge) end)
-AimBtn.MouseButton1Click:Connect(function() SwitchTab(TabAim) end)
-
--- // DODGE BUTTON HANDLERS //
-
-DodgeToggle.MouseButton1Click:Connect(function()
-    getgenv().Config.DodgeEnabled = not getgenv().Config.DodgeEnabled
-    local state = getgenv().Config.DodgeEnabled
-    DodgeToggle.Text = state and "DODGE: ON" or "DODGE: OFF"
-    DodgeToggle.BackgroundColor3 = state and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(150, 150, 150)
-end)
-
-EmergencyToggle.MouseButton1Click:Connect(function()
-    getgenv().Config.EmergencyDodge = not getgenv().Config.EmergencyDodge
-    local state = getgenv().Config.EmergencyDodge
-    EmergencyToggle.Text = state and "NÉ KHẨN CẤP: ON" or "NÉ KHẨN CẤP: OFF"
-    EmergencyToggle.BackgroundColor3 = state and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(150, 150, 150)
-    Notify("Né Khẩn Cấp (Vertical Dodge) đã " .. (state and "BẬT" or "TẮT"))
-end)
-
--- // AIM BUTTON HANDLERS //
-
+-- Toggle Aim
 AimToggle.MouseButton1Click:Connect(function()
     getgenv().Config.AimEnabled = not getgenv().Config.AimEnabled
-    local state = getgenv().Config.AimEnabled
-    AimToggle.Text = state and "AIM: ON" or "AIM: OFF"
-    AimToggle.BackgroundColor3 = state and Color3.fromRGB(200, 40, 200) or Color3.fromRGB(150, 150, 150)
+    AimToggle.Text = getgenv().Config.AimEnabled and "AIM: ON" or "AIM: OFF"
+    AimToggle.BackgroundColor3 = getgenv().Config.AimEnabled and Color3.fromRGB(200, 40, 200) or Color3.fromRGB(150, 150, 150)
 end)
 
+-- Cycle Priority
 PriorityToggle.MouseButton1Click:Connect(function()
     if getgenv().Config.AimPriority == "NEAREST" then
         getgenv().Config.AimPriority = "VISIBLE_HEAD"
         PriorityToggle.Text = "Ưu tiên: Đầu Lộ Diện"
-        PriorityToggle.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+        PriorityToggle.BackgroundColor3 = Color3.fromRGB(255, 165, 0) -- Cam
+    elseif getgenv().Config.AimPriority == "VISIBLE_HEAD" then
+        getgenv().Config.AimPriority = "HYBRID"
+        PriorityToggle.Text = "Ưu tiên: Hybrid (Gần+Lộ)"
+        PriorityToggle.BackgroundColor3 = Color3.fromRGB(255, 50, 50) -- Đỏ
     else
         getgenv().Config.AimPriority = "NEAREST"
         PriorityToggle.Text = "Ưu tiên: Gần Nhất"
-        PriorityToggle.BackgroundColor3 = Color3.fromRGB(100, 100, 200)
+        PriorityToggle.BackgroundColor3 = Color3.fromRGB(100, 100, 200) -- Xanh
     end
-    Notify("Ưu tiên Aim đã đổi: " .. PriorityToggle.Text)
+    Notify("Chế độ ngắm: " .. PriorityToggle.Text)
 end)
 
--- // TEXTBOX UPDATES //
-DodgeRangeBox.FocusLost:Connect(function(enterPressed) if enterPressed then getgenv().Config.ScanRadius = tonumber(DodgeRangeBox.Text) or getgenv().Config.ScanRadius end end)
-DodgeDistanceBox.FocusLost:Connect(function(enterPressed) if enterPressed then getgenv().Config.SafeDistance = tonumber(DodgeDistanceBox.Text) or getgenv().Config.SafeDistance end end)
-AimFOVBox.FocusLost:Connect(function(enterPressed) if enterPressed then getgenv().Config.AimFOV = tonumber(AimFOVBox.Text) or getgenv().Config.AimFOV end end)
+-- Dodge Toggles
+DodgeToggle.MouseButton1Click:Connect(function()
+    getgenv().Config.DodgeEnabled = not getgenv().Config.DodgeEnabled
+    DodgeToggle.Text = getgenv().Config.DodgeEnabled and "DODGE: ON" or "DODGE: OFF"
+    DodgeToggle.BackgroundColor3 = getgenv().Config.DodgeEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(150, 150, 150)
+end)
 
--- Initial Setup
-TabAim.Visible = false
-Notify("Smart Executor V2 (Dodge & Aim) đã sẵn sàng.")
+EmergencyToggle.MouseButton1Click:Connect(function()
+    getgenv().Config.EmergencyDodge = not getgenv().Config.EmergencyDodge
+    EmergencyToggle.Text = getgenv().Config.EmergencyDodge and "NÉ KHẨN CẤP: ON" or "NÉ KHẨN CẤP: OFF"
+    EmergencyToggle.BackgroundColor3 = getgenv().Config.EmergencyDodge and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(150, 150, 150)
+end)
+
+-- Movement Toggles
+FlyToggle.MouseButton1Click:Connect(function()
+    getgenv().Config.FlyEnabled = not getgenv().Config.FlyEnabled
+    FlyToggle.Text = getgenv().Config.FlyEnabled and "FLY: ON" or "FLY: OFF"
+    FlyToggle.BackgroundColor3 = getgenv().Config.FlyEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(150, 150, 150)
+    
+    if not getgenv().Config.FlyEnabled and Player.Character and Player.Character:FindFirstChild("Humanoid") then
+        Player.Character.Humanoid.PlatformStand = false -- Tắt trạng thái bay
+    end
+end)
+
+TpOverheadBtn.MouseButton1Click:Connect(function()
+    local targetHead = GetBestTarget() -- Tái sử dụng logic tìm mục tiêu để TP
+    if targetHead and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        local height = getgenv().Config.TPHeight
+        Player.Character.HumanoidRootPart.CFrame = targetHead.CFrame * CFrame.new(0, height, 0)
+        Notify("Đã TP lên đầu: " .. targetHead.Parent.Name)
+    else
+        Notify("Không tìm thấy mục tiêu để TP!")
+    end
+end)
+
+-- TextBox Updates
+FlySpeedBox.FocusLost:Connect(function(enter) if enter then getgenv().Config.FlySpeed = tonumber(FlySpeedBox.Text) or 50 end end)
+TpHeightBox.FocusLost:Connect(function(enter) if enter then getgenv().Config.TPHeight = tonumber(TpHeightBox.Text) or 10 end end)
+AimFOVBox.FocusLost:Connect(function(enter) if enter then getgenv().Config.AimFOV = tonumber(AimFOVBox.Text) or 90 end end)
+DodgeRangeBox.FocusLost:Connect(function(enter) if enter then getgenv().Config.ScanRadius = tonumber(DodgeRangeBox.Text) or 50 end end)
+DodgeDistanceBox.FocusLost:Connect(function(enter) if enter then getgenv().Config.SafeDistance = tonumber(DodgeDistanceBox.Text) or 15 end end)
+
+Notify("Smart Executor V3 Loaded!")
+
